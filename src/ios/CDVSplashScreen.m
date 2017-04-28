@@ -661,7 +661,7 @@
     [skipView setTintColor:RGBColor(0xff, 0xff, 0xff)];
     [skipView setTitle:@"跳过" forState:UIControlStateNormal];
     skipView.titleLabel.font = [UIFont systemFontOfSize:14];
-    [skipView addTarget:self action:@selector(disposeVideo) forControlEvents:UIControlEventTouchUpInside];
+    [skipView addTarget:self action:@selector(skipVideo) forControlEvents:UIControlEventTouchUpInside];
     skipView.hidden = YES;
     
     [self.viewController.view addSubview:skipView];
@@ -675,6 +675,12 @@
 {
     [self disposeVideo];
 //    [self goToNextViewController];
+}
+
+- (void)skipVideo
+{
+    [videoPlayerController stop];
+    [self disposeVideo];
 }
 
 - (void)disposeVideo
