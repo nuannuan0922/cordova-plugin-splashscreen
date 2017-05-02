@@ -47,6 +47,8 @@
         </config-file>
 
         <source-file src="src/android/SplashScreen.java" target-dir="src/org/apache/cordova/splashscreen" />
+        <!-- layout -->
+        <source-file src="src/android/res/layout/splash_welcome_video.xml" target-dir="res/layout" />
     </platform>
 
     <!-- amazon-fireos -->

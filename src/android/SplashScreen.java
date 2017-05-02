@@ -23,12 +23,22 @@ import android.app.Dialog;
 import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Handler;
+import android.util.Log;
 import android.view.Display;
 import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.view.WindowManager;
@@ -45,6 +55,10 @@ import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CordovaWebView;
 import org.json.JSONArray;
 import org.json.JSONException;
+
+import java.io.IOException;
+
+import static android.content.Context.MODE_PRIVATE;
 
 public class SplashScreen extends CordovaPlugin {
     private static final String LOG_TAG = "SplashScreen";
@@ -68,6 +82,20 @@ public class SplashScreen extends CordovaPlugin {
      */
     private int orientation;
 
+    MediaPlayer player;
+    SurfaceHolder surfaceHolder;
+    LinearLayout ll_skip;
+
+    private boolean isLoadFinished = false;
+    private boolean isVideoDisplayed = false;
+
+    private static boolean firstMoviewShow = true;
+
+    public static SharedPreferences prefrence_config;
+    public static final String WELCOME_VIDEO = "WelcomeVedio";
+    public static final String WELCOME_VIDEO_ISPLAY = "WelcomeVedio_isplay";
+    private boolean isplay = false;
+
     // Helper to be compile-time compatible with both Cordova 3.x and 4.x.
     private View getView() {
         try {
@@ -90,6 +118,9 @@ public class SplashScreen extends CordovaPlugin {
                 getView().setVisibility(View.INVISIBLE);
             }
         });
+        prefrence_config = cordova.getActivity().getSharedPreferences(WELCOME_VIDEO,MODE_PRIVATE);
+        isplay = prefrence_config.getBoolean(WELCOME_VIDEO_ISPLAY, false);
+
         int drawableId = preferences.getInteger("SplashDrawableId", 0);
         if (drawableId == 0) {
             String splashResource = preferences.getString("SplashScreen", "screen");
@@ -113,6 +144,7 @@ public class SplashScreen extends CordovaPlugin {
         if (preferences.getBoolean("SplashShowOnlyFirstTime", true)) {
             firstShow = false;
         }
+
     }
 
     /**
@@ -214,6 +246,10 @@ public class SplashScreen extends CordovaPlugin {
     }
 
     private void removeSplashScreen(final boolean forceHideImmediately) {
+        isLoadFinished = true;
+        if(!isVideoDisplayed) {
+            ll_skip.setVisibility(View.VISIBLE);
+        }
         cordova.getActivity().runOnUiThread(new Runnable() {
             public void run() {
                 if (splashDialog != null && splashDialog.isShowing()) {
@@ -235,10 +271,13 @@ public class SplashScreen extends CordovaPlugin {
 
                             @Override
                             public void onAnimationEnd(Animation animation) {
-                                if (splashDialog != null && splashDialog.isShowing()) {
-                                    splashDialog.dismiss();
-                                    splashDialog = null;
-                                    splashImageView = null;
+                                spinnerStop();
+                                if(isVideoDisplayed) {
+                                    if (splashDialog != null && splashDialog.isShowing()) {
+                                        splashDialog.dismiss();
+                                        splashDialog = null;
+                                        splashImageView = null;
+                                    }
                                 }
                             }
 
@@ -248,14 +287,26 @@ public class SplashScreen extends CordovaPlugin {
                         });
                     } else {
                         spinnerStop();
-                        splashDialog.dismiss();
-                        splashDialog = null;
-                        splashImageView = null;
+                        if(isVideoDisplayed) {
+                            splashDialog.dismiss();
+                            splashDialog = null;
+                            splashImageView = null;
+                        }
                     }
                 }
             }
         });
     }
+
+    private int getId(String idName)
+    {
+        return cordova.getActivity().getResources().getIdentifier(idName, "id", cordova.getActivity().getPackageName());
+    }
+    private int getLayout(String layoutName)
+    {
+        return cordova.getActivity().getResources().getIdentifier(layoutName, "layout", cordova.getActivity().getPackageName());
+    }
+
 
     /**
      * Shows the splash screen over the full Activity
@@ -282,10 +333,117 @@ public class SplashScreen extends CordovaPlugin {
             public void run() {
                 // Get reference to display
                 Display display = cordova.getActivity().getWindowManager().getDefaultDisplay();
-                Context context = webView.getContext();
+                final Context context = webView.getContext();
 
                 // Use an ImageView to render the image because of its flexible scaling options.
-                splashImageView = new ImageView(context);
+
+                View video_view = LayoutInflater.from(context).inflate(getLayout("splash_welcome_video"),null);
+                LinearLayout ll_image =  (LinearLayout) video_view.findViewById(getId("imageview"));
+                SurfaceView surface = (SurfaceView) video_view.findViewById(getId("sv_video"));
+                ll_skip = (LinearLayout) video_view.findViewById(getId("ll_skip"));
+                ll_skip.setOnClickListener(new View.OnClickListener(
+
+                ) {
+                  @Override
+                  public void onClick(View v) {
+                      prefrence_config.edit().putBoolean(WELCOME_VIDEO_ISPLAY, true)
+                              .commit();
+                      if (isLoadFinished) {
+                          if (player.isPlaying()) {
+                              player.stop();
+                          }
+                          player.release();
+                          if (splashDialog != null && splashDialog.isShowing()) {
+                              splashDialog.dismiss();
+                              splashDialog = null;
+                              splashImageView = null;
+                          }
+                      }
+                  }
+                });
+
+              firstMoviewShow = preferences.getBoolean("SplashScreenVideoShowOnlyOnce", false);
+              if(firstMoviewShow && isplay){
+                  isVideoDisplayed = true;
+                  ll_image.setVisibility(View.VISIBLE);
+                  surface.setVisibility(View.GONE);
+                  ll_skip.setVisibility(View.GONE);
+              }else {
+                  surfaceHolder = surface.getHolder();// SurfaceHolder是SurfaceView的控制接口
+                  surfaceHolder.addCallback(new SurfaceHolder.Callback() {
+                      @Override
+                      public void surfaceCreated(SurfaceHolder holder) {
+                          // 必须在surface创建后才能初始化MediaPlayer,否则不会显示图像
+                          String movie_url = preferences.getString("SplashScreenVideoPath", "");
+
+                          String url = webView.getUrl().replace("index.html", movie_url);
+                          Log.e("webView.getUrl0()=====", url);
+
+                          try {
+                              player = new MediaPlayer();
+                              if (url.startsWith("file:///android_asset"))
+                              {
+                                  Log.e("webView.getUrl1()=====", "www/" + movie_url);
+                                  AssetManager assetManager = context.getAssets();
+                                  AssetFileDescriptor fileDescriptor = assetManager.openFd("www/" + movie_url);
+                                  player.setDataSource(fileDescriptor.getFileDescriptor(),
+                                          fileDescriptor.getStartOffset(),
+                                          fileDescriptor.getLength());
+                              }
+                              else
+                              {
+                                  player.setDataSource(cordova.getActivity(), Uri.parse(url));
+                              }
+
+                              player.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                              player.setDisplay(surfaceHolder);
+                              // 设置显示视频显示在SurfaceView上
+                              player.prepare();
+                              player.start();
+                              player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+
+                                  @Override
+                                  public void onCompletion(MediaPlayer mediaPlayer) {
+                                      Log.e("Completion============", "Completion");
+                                      isVideoDisplayed = true;
+                                      prefrence_config.edit().putBoolean(WELCOME_VIDEO_ISPLAY, true)
+                                              .commit();
+                                      if (mediaPlayer.isPlaying()) {
+                                          mediaPlayer.stop();
+                                      }
+                                      mediaPlayer.release();
+                                      if (splashDialog != null && splashDialog.isShowing()) {
+                                          splashDialog.dismiss();
+                                          splashDialog = null;
+                                          splashImageView = null;
+                                      }
+                                  }
+                              });
+
+                          } catch (IOException e) {
+                              e.printStackTrace();
+                              isVideoDisplayed = true;
+                          }
+
+
+                      }
+
+                      @Override
+                      public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+
+                      }
+
+                      @Override
+                      public void surfaceDestroyed(SurfaceHolder holder) {
+
+                      }
+
+
+                  }); // 因为这个类实现了SurfaceHolder.Callback接口，所以回调参数直接this
+                  surfaceHolder.setFixedSize(320, 220);// 显示的分辨率,不设置为视频默认
+                  surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);// Surface类型
+              }
+              splashImageView = new ImageView(context);
                 splashImageView.setImageResource(drawableId);
                 LayoutParams layoutParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
                 splashImageView.setLayoutParams(layoutParams);
@@ -305,6 +463,7 @@ public class SplashScreen extends CordovaPlugin {
                     splashImageView.setScaleType(ImageView.ScaleType.FIT_XY);
                 }
 
+                ll_image.addView(splashImageView);
                 // Create and show the dialog
                 splashDialog = new Dialog(context, android.R.style.Theme_Translucent_NoTitleBar);
                 // check to see if the splash screen should be full screen
@@ -313,8 +472,10 @@ public class SplashScreen extends CordovaPlugin {
                     splashDialog.getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                             WindowManager.LayoutParams.FLAG_FULLSCREEN);
                 }
-                splashDialog.setContentView(splashImageView);
-                splashDialog.setCancelable(false);
+//                splashDialog.setContentView(splashImageView);
+              splashDialog.setContentView(video_view);
+
+              splashDialog.setCancelable(false);
                 splashDialog.show();
 
                 if (preferences.getBoolean("ShowSplashScreenSpinner", true)) {
@@ -382,4 +543,5 @@ public class SplashScreen extends CordovaPlugin {
             }
         });
     }
+
 }
