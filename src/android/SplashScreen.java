@@ -6,9 +6,7 @@
        to you under the Apache License, Version 2.0 (the
        "License"); you may not use this file except in compliance
        with the License.  You may obtain a copy of the License at
-
          http://www.apache.org/licenses/LICENSE-2.0
-
        Unless required by applicable law or agreed to in writing,
        software distributed under the License is distributed on an
        "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -71,7 +69,7 @@ public class SplashScreen extends CordovaPlugin {
     private static ProgressDialog spinnerDialog;
     private static boolean firstShow = true;
     private static boolean lastHideAfterDelay; // https://issues.apache.org/jira/browse/CB-9094
-
+    private boolean splashLoaded;
     /**
      * Displays the splash drawable.
      */
@@ -95,6 +93,7 @@ public class SplashScreen extends CordovaPlugin {
     public static final String WELCOME_VIDEO = "WelcomeVedio";
     public static final String WELCOME_VIDEO_ISPLAY = "WelcomeVedio_isplay";
     private boolean isplay = false;
+    private String videoPath;
 
     // Helper to be compile-time compatible with both Cordova 3.x and 4.x.
     private View getView() {
@@ -156,7 +155,7 @@ public class SplashScreen extends CordovaPlugin {
 
     private int getFadeDuration () {
         int fadeSplashScreenDuration = preferences.getBoolean("FadeSplashScreen", true) ?
-            preferences.getInteger("FadeSplashScreenDuration", DEFAULT_FADE_DURATION) : 0;
+                preferences.getInteger("FadeSplashScreenDuration", DEFAULT_FADE_DURATION) : 0;
 
         if (fadeSplashScreenDuration < 30) {
             // [CB-9750] This value used to be in decimal seconds, so we will assume that if someone specifies 10
@@ -196,6 +195,10 @@ public class SplashScreen extends CordovaPlugin {
                 }
             });
         } else if (action.equals("show")) {
+            if(args != null && args.length() > 0)
+            {
+                videoPath = args.getString(0);
+            }
             cordova.getActivity().runOnUiThread(new Runnable() {
                 public void run() {
                     webView.postMessage("splashscreen", "show");
@@ -277,6 +280,7 @@ public class SplashScreen extends CordovaPlugin {
                                         splashDialog.dismiss();
                                         splashDialog = null;
                                         splashImageView = null;
+                                        splashLoaded = true;
                                     }
                                 }
                             }
@@ -291,6 +295,7 @@ public class SplashScreen extends CordovaPlugin {
                             splashDialog.dismiss();
                             splashDialog = null;
                             splashImageView = null;
+                            splashLoaded = true;
                         }
                     }
                 }
@@ -341,109 +346,119 @@ public class SplashScreen extends CordovaPlugin {
                 LinearLayout ll_image =  (LinearLayout) video_view.findViewById(getId("imageview"));
                 SurfaceView surface = (SurfaceView) video_view.findViewById(getId("sv_video"));
                 ll_skip = (LinearLayout) video_view.findViewById(getId("ll_skip"));
+                if(splashLoaded)
+                {
+                    ll_skip.setVisibility(View.VISIBLE);
+                }
                 ll_skip.setOnClickListener(new View.OnClickListener(
 
                 ) {
-                  @Override
-                  public void onClick(View v) {
-                      prefrence_config.edit().putBoolean(WELCOME_VIDEO_ISPLAY, true)
-                              .commit();
-                      if (isLoadFinished) {
-                          if (player.isPlaying()) {
-                              player.stop();
-                          }
-                          player.release();
-                          if (splashDialog != null && splashDialog.isShowing()) {
-                              splashDialog.dismiss();
-                              splashDialog = null;
-                              splashImageView = null;
-                          }
-                      }
-                  }
+                    @Override
+                    public void onClick(View v) {
+                        prefrence_config.edit().putBoolean(WELCOME_VIDEO_ISPLAY, true)
+                                .commit();
+                        if (isLoadFinished) {
+                            if (player.isPlaying()) {
+                                player.stop();
+                            }
+                            player.release();
+                            if (splashDialog != null && splashDialog.isShowing()) {
+                                splashDialog.dismiss();
+                                splashDialog = null;
+                                splashImageView = null;
+                                splashLoaded = true;
+                            }
+                        }
+                    }
                 });
 
-              firstMoviewShow = preferences.getBoolean("SplashScreenVideoShowOnlyOnce", false);
-              if(firstMoviewShow && isplay){
-                  isVideoDisplayed = true;
-                  ll_image.setVisibility(View.VISIBLE);
-                  surface.setVisibility(View.GONE);
-                  ll_skip.setVisibility(View.GONE);
-              }else {
-                  surfaceHolder = surface.getHolder();// SurfaceHolder是SurfaceView的控制接口
-                  surfaceHolder.addCallback(new SurfaceHolder.Callback() {
-                      @Override
-                      public void surfaceCreated(SurfaceHolder holder) {
-                          // 必须在surface创建后才能初始化MediaPlayer,否则不会显示图像
-                          String movie_url = preferences.getString("SplashScreenVideoPath", "");
+                firstMoviewShow = preferences.getBoolean("SplashScreenVideoShowOnlyOnce", false);
+                if(firstMoviewShow && isplay){
+                    isVideoDisplayed = true;
+                    ll_image.setVisibility(View.VISIBLE);
+                    surface.setVisibility(View.GONE);
+                    ll_skip.setVisibility(View.GONE);
+                }else {
+                    surfaceHolder = surface.getHolder();// SurfaceHolder是SurfaceView的控制接口
+                    surfaceHolder.addCallback(new SurfaceHolder.Callback() {
+                        @Override
+                        public void surfaceCreated(SurfaceHolder holder) {
+                            // 必须在surface创建后才能初始化MediaPlayer,否则不会显示图像
+                            String movie_url = preferences.getString("SplashScreenVideoPath", "");
+                            if(videoPath != null && videoPath.length() > 0)
+                            {
+                                movie_url = videoPath;
+                            }
+                            String url = webView.getUrl().replace("index.html", movie_url);
+                            Log.e("webView.getUrl0()=====", url);
 
-                          String url = webView.getUrl().replace("index.html", movie_url);
-                          Log.e("webView.getUrl0()=====", url);
+                            try {
+                                player = new MediaPlayer();
+                                if (url.startsWith("file:///android_asset"))
+                                {
+                                    Log.e("webView.getUrl1()=====", "www/" + movie_url);
+                                    AssetManager assetManager = context.getAssets();
+                                    AssetFileDescriptor fileDescriptor = assetManager.openFd("www/" + movie_url);
+                                    player.setDataSource(fileDescriptor.getFileDescriptor(),
+                                            fileDescriptor.getStartOffset(),
+                                            fileDescriptor.getLength());
+                                }
+                                else
+                                {
+                                    player.setDataSource(cordova.getActivity(), Uri.parse(url));
+                                }
 
-                          try {
-                              player = new MediaPlayer();
-                              if (url.startsWith("file:///android_asset"))
-                              {
-                                  Log.e("webView.getUrl1()=====", "www/" + movie_url);
-                                  AssetManager assetManager = context.getAssets();
-                                  AssetFileDescriptor fileDescriptor = assetManager.openFd("www/" + movie_url);
-                                  player.setDataSource(fileDescriptor.getFileDescriptor(),
-                                          fileDescriptor.getStartOffset(),
-                                          fileDescriptor.getLength());
-                              }
-                              else
-                              {
-                                  player.setDataSource(cordova.getActivity(), Uri.parse(url));
-                              }
+                                player.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                                player.setDisplay(surfaceHolder);
+                                // 设置显示视频显示在SurfaceView上
+                                player.prepare();
+                                player.start();
+                                player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
 
-                              player.setAudioStreamType(AudioManager.STREAM_MUSIC);
-                              player.setDisplay(surfaceHolder);
-                              // 设置显示视频显示在SurfaceView上
-                              player.prepare();
-                              player.start();
-                              player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                                    @Override
+                                    public void onCompletion(MediaPlayer mediaPlayer) {
+                                        Log.e("Completion============", "Completion");
+                                        isVideoDisplayed = true;
+                                        prefrence_config.edit().putBoolean(WELCOME_VIDEO_ISPLAY, true)
+                                                .commit();
+                                        if (mediaPlayer.isPlaying()) {
+                                            mediaPlayer.stop();
+                                        }
+                                        mediaPlayer.release();
+                                        if (splashDialog != null && splashDialog.isShowing()) {
+                                            splashDialog.dismiss();
+                                            splashDialog = null;
+                                            splashImageView = null;
+                                            splashLoaded = true;
+                                        }
+                                        videoPath = null;
+                                    }
+                                });
 
-                                  @Override
-                                  public void onCompletion(MediaPlayer mediaPlayer) {
-                                      Log.e("Completion============", "Completion");
-                                      isVideoDisplayed = true;
-                                      prefrence_config.edit().putBoolean(WELCOME_VIDEO_ISPLAY, true)
-                                              .commit();
-                                      if (mediaPlayer.isPlaying()) {
-                                          mediaPlayer.stop();
-                                      }
-                                      mediaPlayer.release();
-                                      if (splashDialog != null && splashDialog.isShowing()) {
-                                          splashDialog.dismiss();
-                                          splashDialog = null;
-                                          splashImageView = null;
-                                      }
-                                  }
-                              });
-
-                          } catch (IOException e) {
-                              e.printStackTrace();
-                              isVideoDisplayed = true;
-                          }
-
-
-                      }
-
-                      @Override
-                      public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-
-                      }
-
-                      @Override
-                      public void surfaceDestroyed(SurfaceHolder holder) {
-
-                      }
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                                isVideoDisplayed = true;
+                            }
 
 
-                  }); // 因为这个类实现了SurfaceHolder.Callback接口，所以回调参数直接this
-                  surfaceHolder.setFixedSize(320, 220);// 显示的分辨率,不设置为视频默认
-                  surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);// Surface类型
-              }
-              splashImageView = new ImageView(context);
+                        }
+
+                        @Override
+                        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+
+                        }
+
+                        @Override
+                        public void surfaceDestroyed(SurfaceHolder holder) {
+
+                        }
+
+
+                    }); // 因为这个类实现了SurfaceHolder.Callback接口，所以回调参数直接this
+                    surfaceHolder.setFixedSize(320, 220);// 显示的分辨率,不设置为视频默认
+                    surfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);// Surface类型
+                }
+                splashImageView = new ImageView(context);
                 splashImageView.setImageResource(drawableId);
                 LayoutParams layoutParams = new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
                 splashImageView.setLayoutParams(layoutParams);
@@ -473,12 +488,12 @@ public class SplashScreen extends CordovaPlugin {
                             WindowManager.LayoutParams.FLAG_FULLSCREEN);
                 }
 //                splashDialog.setContentView(splashImageView);
-              splashDialog.setContentView(video_view);
+                splashDialog.setContentView(video_view);
 
-              splashDialog.setCancelable(false);
+                splashDialog.setCancelable(false);
                 splashDialog.show();
 
-                if (preferences.getBoolean("ShowSplashScreenSpinner", true)) {
+                if (preferences.getBoolean("ShowSplashScreenSpinner", true) && !splashLoaded) {
                     spinnerStart();
                 }
 

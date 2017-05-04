@@ -22,8 +22,8 @@
 var exec = require('cordova/exec');
 
 var splashscreen = {
-    show:function() {
-        exec(null, null, "SplashScreen", "show", []);
+    show:function(videoPath) {
+        exec(null, null, "SplashScreen", "show", videoPath ? [videoPath] : []);
     },
     hide:function() {
         exec(null, null, "SplashScreen", "hide", []);

@@ -46,6 +46,9 @@ Report issues with this plugin on the [Apache Cordova issue tracker][Apache Cord
     // 设置视频是否只显示一次
     <preference name="SplashScreenVideoShowOnlyOnce" value="true" />
 
+    // 在其它地方（非Splash页面）播放视频时，不传参数时默认使用上面配置的启动视频
+    splashScreen.show('assets/welcome_movie.mp4');
+
 ## Supported Platforms
 
 - Amazon Fire OS

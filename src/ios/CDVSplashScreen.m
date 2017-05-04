@@ -34,6 +34,8 @@
 {
     MPMoviePlayerController *videoPlayerController;
     UIButton *skipView;
+    BOOL splashPageLoaded;
+    NSString *videoPath;
 }
 @end
 
@@ -48,6 +50,10 @@
 
 - (void)show:(CDVInvokedUrlCommand*)command
 {
+    if(command.arguments.count)
+    {
+        videoPath = [command.arguments objectAtIndex:0];
+    }
     [self setVisible:YES];
 }
 
@@ -473,7 +479,15 @@
             if (_imageView == nil)
             {
                 [self createPlayerView];
-                [self createViews];
+                
+                if(!splashPageLoaded)
+                {
+                    [self createViews];
+                }
+                else
+                {
+                    skipView.hidden = NO;
+                }
             }
         }
         else if (fadeDuration == 0 && splashDuration == 0)
@@ -546,12 +560,16 @@
 {
     NSString *mp4Path = @"assets/welcome_movie.mp4";
     mp4Path = [[self.commandDelegate settings] objectForKey:[@"SplashScreenVideoPath" lowercaseString]];
+    if(videoPath.length)
+    {
+        mp4Path = videoPath;
+    }
     if(!mp4Path)
     {
         NSLog(@"video path is nil");
         return;
     }
-    
+    NSLog(@"play video: %@", mp4Path);
     NSString *showOnlyOnce = [[self.commandDelegate settings] objectForKey:[@"SplashScreenVideoShowOnlyOnce" lowercaseString]];
     if([@"true" isEqualToString:showOnlyOnce])
     {
@@ -689,5 +707,9 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self name:MPMoviePlayerPlaybackStateDidChangeNotification object:videoPlayerController];
     [videoPlayerController.view removeFromSuperview];
     [skipView removeFromSuperview];
+    
+    splashPageLoaded = YES;
+    videoPath = nil;
+    _visible = NO;
 }
 @end
